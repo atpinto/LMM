@@ -182,10 +182,25 @@ footer.credit a:hover { color: var(--accent); }
 .present header { max-width: none; gap: 6px; padding-right: 150px; }
 .present .category { font-size: 20px; }
 .present h1 { font-size: clamp(36px, 3vw, 60px); letter-spacing: -1px; }
-.present .bench { grid-template-columns: minmax(0, 1fr) clamp(500px, 34vw, 680px); gap: 24px; }
-@media (max-width: 960px) { .present .bench { grid-template-columns: minmax(0, 1fr); } }
-.present .rail, .present .legend, .present #focusInfo, .present .steps, .present .notes, .present footer.credit { zoom: 1.65; }
-@media (min-width: 1700px) { .present .rail, .present .legend, .present #focusInfo, .present .steps, .present .notes, .present footer.credit { zoom: 1.9; } }
+.present .bench { grid-template-columns: minmax(0, 1fr) clamp(500px, 34vw, 680px); grid-template-rows: auto auto auto 1fr; gap: 16px 24px;
+  grid-template-areas: "show show" "plot model" "plot est" "plot re"; }
+@media (max-width: 960px) { .present .bench { grid-template-columns: minmax(0, 1fr); grid-template-areas: "show" "plot" "model" "est" "re"; } }
+.present .rail { display: contents; }
+.present .plot { grid-area: plot; }
+.present #modelPanel { grid-area: model; }
+.present #estPanel { grid-area: est; }
+.present #rePanel { grid-area: re; }
+/* Show becomes a horizontal bar across the top; estimates and random effects stay hidden until ticked there */
+.present #showPanel { grid-area: show; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 28px; padding-block: 10px; }
+.present #showPanel .checks { flex-direction: row; flex-wrap: wrap; gap: 6px 22px; }
+.present #showPanel .btns { margin-left: auto; }
+.present #showPanel h2 { display: none; }
+.present-only { display: none !important; }
+.present .present-only { display: flex !important; }
+.present:not(.show-est) #estPanel, .present:not(.show-re) #rePanel { display: none; }
+.present .panel, .present .legend, .present #focusInfo, .present .steps, .present .notes, .present footer.credit { zoom: 1.65; }
+@media (min-width: 1700px) { .present .panel, .present .legend, .present #focusInfo, .present .steps, .present .notes, .present footer.credit { zoom: 1.9; } }
+.present #showPanel { zoom: 1.4; }
 .present #chart text { font-size: clamp(22px, 1.75vw, 34px); }
 .present #chart .axis-title { font-size: clamp(24px, 1.9vw, 36px); }
 .present #focusLabel { font-size: clamp(24px, 1.9vw, 36px); stroke-width: 7px; }
@@ -233,7 +248,7 @@ if (new URLSearchParams(location.search).has('present')) document.documentElemen
     </div>
 
     <div class="rail">
-      <div class="panel">
+      <div class="panel" id="modelPanel">
         <h2>Model</h2>
         <div class="seg" role="radiogroup" aria-label="Random effects structure">
           <input type="radio" name="model" id="m-ri" value="ri" checked><label for="m-ri">Random intercept</label>
@@ -243,13 +258,15 @@ if (new URLSearchParams(location.search).has('present')) document.documentElemen
         <div class="formula" id="lme4"></div>
       </div>
 
-      <div class="panel">
+      <div class="panel" id="showPanel">
         <h2>Show</h2>
         <div class="checks">
           <label><input type="checkbox" id="c-fit" checked>Individual fitted lines</label>
           <label><input type="checkbox" id="c-mean" checked>Population mean line</label>
           <label><input type="checkbox" id="c-dots" checked>Observed visits</label>
           <label><input type="checkbox" id="c-ols">Separate per-patient fits</label>
+          <label class="present-only"><input type="checkbox" id="c-est" autocomplete="off">Estimates</label>
+          <label class="present-only"><input type="checkbox" id="c-re" autocomplete="off">Patient random effects</label>
         </div>
         <div class="btns">
           <button class="primary" id="replay" type="button">Replay animation</button>
@@ -257,7 +274,7 @@ if (new URLSearchParams(location.search).has('present')) document.documentElemen
         </div>
       </div>
 
-      <div class="panel">
+      <div class="panel" id="estPanel">
         <h2>Estimates</h2>
         <table class="est">
           <thead><tr><th></th><th id="h-ri">Intercept</th><th id="h-ris">Intercept + slope</th></tr></thead>
@@ -266,7 +283,7 @@ if (new URLSearchParams(location.search).has('present')) document.documentElemen
         <p class="note">Fitted by maximum likelihood (EM algorithm) in your browser. Lower AIC is better.</p>
       </div>
 
-      <div class="panel">
+      <div class="panel" id="rePanel">
         <h2>Patient random effects</h2>
         <div class="chips" id="chips"></div>
       </div>
@@ -728,6 +745,8 @@ function setPresent(on) {
 }
 document.getElementById('presentOn').addEventListener('click', () => setPresent(true));
 document.getElementById('presentOff').addEventListener('click', () => setPresent(false));
+for (const [id, cls] of [['c-est', 'show-est'], ['c-re', 'show-re']])
+  document.getElementById(id).addEventListener('change', e => document.documentElement.classList.toggle(cls, e.target.checked));
 addEventListener('keydown', e => {
   if (e.metaKey || e.ctrlKey || e.altKey || e.target.matches('input[type=text], textarea')) return;
   if (e.key === 'p' || e.key === 'P') setPresent(!isPresent());
