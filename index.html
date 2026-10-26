@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Linear mixed models, animated</title>
+<meta name="description" content="Fit a random intercept or random intercept and slope model to ten patients and watch each patient's line separate from the population mean.">
+<meta name="theme-color" content="#141414">
+<link rel="icon" href="https://atpinto.github.io/assets/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;550;650&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Design read: interactive teaching simulation for biostatistics students, in the "Biostatistics in motion" house style.
+   Layout: chart-first workbench, plot left and a control rail right, reading notes below.
+   Shape rule: containers 5px radius, controls nested inside them 3px. One accent (signal orange) marks random effects and actions. */
+:root {
+  --bg: #f7f7f2;
+  --surface: #ffffff;
+  --ink: #141414;
+  --muted: #5d625e;
+  --rule: #d9ddd6;
+  --tint: #edf0e8;
+  --accent: #c63a1e;
+  --accent-ink: #ffffff;
+  --accent-soft: #f7e6e0;
+  --p-l: 0.54;
+  --p-c: 0.12;
+  --dot-l: 0.62;
+  --sans: "Geist", "Helvetica Neue", Arial, sans-serif;
+  --mono: "Geist Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121412; --surface: #1a1d1a; --ink: #ecede8; --muted: #a2a8a1; --rule: #2e332e; --tint: #222622;
+    --accent: #f0724f; --accent-ink: #161816; --accent-soft: #34211b; --p-l: 0.76; --p-c: 0.11; --dot-l: 0.70; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121412; --surface: #1a1d1a; --ink: #ecede8; --muted: #a2a8a1; --rule: #2e332e; --tint: #222622;
+  --accent: #f0724f; --accent-ink: #161816; --accent-soft: #34211b; --p-l: 0.76; --p-c: 0.11; --dot-l: 0.70; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased;
+  border-top: 5px solid var(--accent);
+}
+a { color: inherit; }
+.wrap {
+  max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: 28px;
+  padding-left: max(20px, env(safe-area-inset-left, 0px));
+  padding-right: max(20px, env(safe-area-inset-right, 0px));
+  padding-block: 18px 40px;
+}
+
+.site { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding-bottom: 14px; border-bottom: 1px solid var(--rule); font-size: 13px; }
+.site a { text-decoration: none; }
+.site a:hover { color: var(--accent); }
+.wordmark { font-weight: 650; letter-spacing: -.3px; font-size: 15px; }
+.wordmark span { font-weight: 400; color: var(--muted); }
+.embedded .site { display: none; }
+
+header { display: flex; flex-direction: column; gap: 10px; max-width: 64ch; }
+.category { margin: 0; text-transform: uppercase; font-size: 11px; letter-spacing: .11em; font-weight: 650; color: var(--accent); }
+h1 { margin: 0; font-size: clamp(28px, 3.6vw, 44px); line-height: 1.08; font-weight: 550; letter-spacing: -1.5px; text-wrap: balance; }
+h1 span { color: var(--muted); }
+header p.lede { margin: 0; color: var(--muted); font-size: 16px; max-width: 58ch; }
+
+.bench { display: grid; grid-template-columns: minmax(0, 1fr) 330px; gap: 20px; align-items: start; }
+@media (max-width: 960px) { .bench { grid-template-columns: minmax(0, 1fr); } }
+
+.plot { background: var(--surface); border: 1px solid var(--rule); border-radius: 5px; padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 12.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 8px; }
+.sw-mean { width: 22px; height: 4px; background: var(--ink); border-radius: 2px; }
+.sw-ind { width: 22px; height: 2px; background: linear-gradient(90deg, oklch(var(--p-l) var(--p-c) 20), oklch(var(--p-l) var(--p-c) 140), oklch(var(--p-l) var(--p-c) 260)); }
+.sw-ols { width: 22px; height: 0; border-top: 1.5px dashed var(--muted); }
+.sw-dot { width: 8px; height: 8px; border-radius: 50%; background: oklch(var(--dot-l) var(--p-c) 200); }
+.sw-avg { width: 9px; height: 9px; border: 1.5px solid var(--ink); transform: rotate(45deg); background: var(--surface); }
+
+#chartBox { width: 100%; position: relative; }
+#chart { display: block; width: 100%; overflow: visible; }
+#chart text { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+#chart .axis-title { font-family: var(--sans); font-size: 12.5px; fill: var(--muted); }
+#chart .grid line { stroke: var(--rule); stroke-width: 1; }
+#chart .grid line.base { stroke: var(--muted); stroke-opacity: .5; }
+
+.pt { --c: oklch(var(--p-l) var(--p-c) var(--h)); transition: opacity .25s; }
+.pt .fit { stroke: var(--c); stroke-width: 2; stroke-linecap: round; transition: opacity .3s, stroke-width .2s; }
+.pt .ols { stroke: var(--c); stroke-width: 1.4; stroke-dasharray: 4 4; opacity: .75; transition: opacity .3s; }
+.pt .dot { fill: oklch(var(--dot-l) var(--p-c) var(--h)); stroke: var(--surface); stroke-width: 1.2; transition: opacity .3s; cursor: pointer; }
+.pt .hit { stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
+#meanLine { stroke: var(--ink); stroke-width: 4; stroke-linecap: round; }
+#meanHalo { stroke: var(--surface); stroke-width: 9; stroke-linecap: round; opacity: .85; }
+.avg { fill: var(--surface); stroke: var(--ink); stroke-width: 1.6; }
+#meanG { transition: opacity .3s; pointer-events: none; }
+#focusLabel { font-family: var(--mono); font-size: 12px; font-weight: 500; fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 4px; pointer-events: none; }
+
+#chart.hide-fit .fit, #chart.hide-fit .hit { opacity: 0 !important; pointer-events: none; }
+#chart.hide-ols .ols { opacity: 0 !important; }
+#chart.hide-dots .dot { opacity: 0 !important; pointer-events: none; }
+#chart.hide-mean #meanG { opacity: 0 !important; }
+#chart.focusing .pt:not(.on) { opacity: .14; }
+#chart.focusing .pt.on .fit { stroke-width: 3.2; }
+
+#focusInfo { font-size: 13px; color: var(--muted); min-height: 1.6em; font-variant-numeric: tabular-nums; }
+#focusInfo strong { color: var(--ink); font-weight: 550; }
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+@media (max-width: 600px) { .steps { grid-template-columns: minmax(0, 1fr); gap: 8px; } }
+.step { border-top: 2px solid var(--rule); padding-top: 9px; font-size: 13px; color: var(--muted); transition: border-color .3s, color .3s; min-width: 0; }
+.step b { display: flex; align-items: center; gap: 8px; font-weight: 550; color: var(--ink); margin-bottom: 2px; }
+.step b i { font-style: normal; font-family: var(--mono); font-size: 11px; width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; border: 1px solid var(--rule); color: var(--muted); transition: background .3s, color .3s, border-color .3s; }
+.step.on { border-color: var(--accent); }
+.step.on b i { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+
+.rail { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.panel { background: var(--surface); border: 1px solid var(--rule); border-radius: 5px; padding: 14px 16px; display: flex; flex-direction: column; gap: 11px; min-width: 0; }
+.panel h2 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: -.1px; }
+
+.seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--rule); border-radius: 5px; padding: 3px; gap: 3px; background: var(--tint); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { text-align: center; padding: 8px 6px; border-radius: 3px; font-size: 13px; font-weight: 500; line-height: 1.25; cursor: pointer; color: var(--muted); transition: background .2s, color .2s; }
+.seg input:checked + label { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px rgb(20 24 20 / .1), inset 0 0 0 1px var(--rule); }
+.seg input:focus-visible + label { outline: 2px solid var(--accent); outline-offset: 1px; }
+.formula { font-family: var(--mono); font-size: 12.5px; background: var(--tint); border-radius: 3px; padding: 7px 10px; overflow-x: auto; white-space: nowrap; }
+.formula .rnd { color: var(--accent); font-weight: 500; }
+
+.checks { display: flex; flex-direction: column; gap: 8px; }
+.checks label { display: flex; align-items: center; gap: 10px; font-size: 14px; cursor: pointer; }
+.checks input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+button { font: inherit; font-size: 13px; font-weight: 550; border-radius: 3px; padding: 8px 13px; cursor: pointer; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); white-space: nowrap; transition: transform .12s, background .2s; }
+button:hover { background: var(--tint); }
+button:active { transform: translateY(1px); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.primary:hover { filter: brightness(1.07); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+table.est { width: 100%; border-collapse: collapse; font-size: 12.5px; font-variant-numeric: tabular-nums; }
+table.est th, table.est td { padding: 5px 4px; text-align: right; }
+table.est tbody tr + tr td { border-top: 1px solid var(--rule); }
+table.est th:first-child, table.est td:first-child { text-align: left; color: var(--muted); font-weight: 400; }
+table.est thead th { font-size: 11.5px; font-weight: 550; color: var(--muted); vertical-align: bottom; padding-bottom: 7px; }
+table.est td { font-family: var(--mono); }
+table.est td.na { color: var(--muted); }
+table.est .act { background: var(--accent-soft); color: var(--ink); }
+table.est thead .act { border-radius: 3px 3px 0 0; }
+.note { font-size: 12px; color: var(--muted); margin: 0; }
+
+.chips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.chip { display: flex; align-items: center; gap: 7px; padding: 6px 8px; text-align: left; font-family: var(--mono); font-size: 11.5px; font-weight: 400; min-width: 0; }
+.chip i { width: 9px; height: 9px; border-radius: 50%; flex: none; background: oklch(var(--p-l) var(--p-c) var(--h)); }
+.chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+.chip strong { font-weight: 500; color: var(--ink); }
+.chip.on { border-color: var(--accent); background: var(--accent-soft); }
+
+.notes { display: grid; grid-template-columns: minmax(0, 1fr); border-top: 1px solid var(--rule); }
+.notes section { display: grid; grid-template-columns: 240px minmax(0, 62ch); gap: 8px 32px; padding-block: 18px; min-width: 0; }
+.notes section + section { border-top: 1px solid var(--rule); }
+@media (max-width: 720px) { .notes section { grid-template-columns: minmax(0, 1fr); } }
+.notes h3 { font-size: 18px; font-weight: 550; letter-spacing: -.4px; margin: 0; text-wrap: balance; }
+.notes p { margin: 0; color: var(--muted); font-size: 14.5px; }
+.notes code { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+
+footer.credit { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 24px; font-size: 12.5px; color: var(--muted); padding-top: 16px; border-top: 1px solid var(--rule); }
+footer.credit a { text-decoration: underline; text-underline-offset: 3px; }
+footer.credit a:hover { color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<script>if (window.self !== window.top) document.documentElement.classList.add('embedded');</script>
+<div class="wrap">
+  <nav class="site" aria-label="Site"><a class="wordmark" href="https://atpinto.github.io/">Biostatistics <span>in motion</span></a><a href="https://atpinto.github.io/#catalog">All simulations</a></nav>
+  <header>
+    <p class="category">Regression models</p>
+    <h1>Linear mixed models. <span>One average line, and a line for every patient.</span></h1>
+    <p class="lede">Ten patients start blood-pressure treatment and return at irregular times. Fit the model and watch each patient's line separate from the mean.</p>
+  </header>
+
+  <div class="bench">
+    <div class="plot">
+      <div class="legend" aria-hidden="true">
+        <span><i class="sw-mean"></i>Population mean (fixed effects)</span>
+        <span><i class="sw-avg"></i>Observed mean (2-month window)</span>
+        <span><i class="sw-ind"></i>Patient fitted line</span>
+        <span><i class="sw-dot"></i>Visit</span>
+        <span><i class="sw-ols"></i>Separate fit (no pooling)</span>
+      </div>
+      <div id="chartBox"><svg id="chart" role="img" aria-label="Systolic blood pressure by month for 10 patients with fitted lines"></svg></div>
+      <div id="focusInfo">Hover a line, a dot or a patient chip to inspect one patient. Click to pin.</div>
+      <div class="steps">
+        <div class="step" data-s="1"><b><i>1</i>Observations</b>Each dot is one clinic visit, coloured by patient.</div>
+        <div class="step" data-s="2"><b><i>2</i>Fixed effects</b>The average trajectory shared by all patients.</div>
+        <div class="step" data-s="3"><b><i>3</i>Random effects</b>Each patient's own line, pulled toward the average.</div>
+      </div>
+    </div>
+
+    <div class="rail">
+      <div class="panel">
+        <h2>Model</h2>
+        <div class="seg" role="radiogroup" aria-label="Random effects structure">
+          <input type="radio" name="model" id="m-ri" value="ri" checked><label for="m-ri">Random intercept</label>
+          <input type="radio" name="model" id="m-ris" value="ris"><label for="m-ris">Random intercept + slope</label>
+        </div>
+        <div class="formula" id="formula"></div>
+        <div class="formula" id="lme4"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Show</h2>
+        <div class="checks">
+          <label><input type="checkbox" id="c-fit" checked>Individual fitted lines</label>
+          <label><input type="checkbox" id="c-mean" checked>Population mean line</label>
+          <label><input type="checkbox" id="c-dots" checked>Observed visits</label>
+          <label><input type="checkbox" id="c-ols">Separate per-patient fits</label>
+        </div>
+        <div class="btns">
+          <button class="primary" id="replay" type="button">Replay animation</button>
+          <button id="resample" type="button">New patients</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Estimates</h2>
+        <table class="est">
+          <thead><tr><th></th><th id="h-ri">Intercept</th><th id="h-ris">Intercept + slope</th></tr></thead>
+          <tbody id="estBody"></tbody>
+        </table>
+        <p class="note">Fitted by maximum likelihood (EM algorithm) in your browser. Lower AIC is better.</p>
+      </div>
+
+      <div class="panel">
+        <h2>Patient random effects</h2>
+        <div class="chips" id="chips"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="notes">
+    <section>
+      <h3>Random intercept</h3>
+      <p>Every patient gets their own starting level <code>u₀ᵢ</code>, but all share the same slope. The fitted lines are parallel: patients differ in how high their blood pressure is, not in how fast it falls.</p>
+    </section>
+    <section>
+      <h3>Adding a random slope</h3>
+      <p>Each patient also gets a slope deviation <code>u₁ᵢ</code>, so lines can fan out or cross. The model estimates the spread of slopes (τ₁) and whether high starters tend to drop faster (the correlation).</p>
+    </section>
+    <section>
+      <h3>Shrinkage</h3>
+      <p>Turn on <em>Separate per-patient fits</em>. Those dashed lines use only one patient's visits. The mixed-model lines sit closer to the mean, most of all for patients with few or noisy visits, because they borrow strength from the whole group.</p>
+    </section>
+  </div>
+
+  <footer class="credit"><span>Part of <a href="https://atpinto.github.io/">Biostatistics in motion</a>, created by <a href="https://profiles.sydney.edu.au/armando.teixeira-pinto">Armando Teixeira-Pinto</a>.</span><span>Simulated data. Free to reuse under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</span></footer>
+</div>
+
+<script>
+(() => {
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const VISITS = [0, 2, 4, 6, 8, 10, 12];
+const N = 10;
+const NS = 'http://www.w3.org/2000/svg';
+
+// ---------- data ----------
+function rng(seed) {
+  return () => {
+    seed = (seed + 0x6D2B79F5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function gauss(r) { let u = 0; while (!u) u = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * r()); }
+
+function simulate(seed) {
+  const r = rng(seed);
+  const B0 = 152, B1 = -1.6, S0 = 9, S1 = 1.1, RHO = -0.35, SE = 4.5;
+  const out = [];
+  for (let i = 0; i < N; i++) {
+    const z1 = gauss(r), z2 = gauss(r);
+    const u0 = S0 * z1, u1 = S1 * (RHO * z1 + Math.sqrt(1 - RHO * RHO) * z2);
+    // 3 to 9 visits at irregular times: a baseline in the first month, follow-ups anywhere up to month 12
+    const nVis = 3 + Math.floor(r() * 7);
+    const t = [Math.round(r() * 10) / 10];
+    for (let k = 1; k < nVis; k++) t.push(Math.round((0.5 + r() * 11.5) * 10) / 10);
+    t.sort((a, b) => a - b);
+    const y = t.map(v => Math.round(B0 + u0 + (B1 + u1) * v + SE * gauss(r)));
+    out.push({ id: 'P' + String(i + 1).padStart(2, '0'), t, y, hue: (i * 36 + 18) % 360 });
+  }
+  return out;
+}
+
+// ---------- small matrix helpers ----------
+const mul = (A, B) => A.map(r => B[0].map((_, j) => r.reduce((s, v, k) => s + v * B[k][j], 0)));
+const tr = A => A[0].map((_, j) => A.map(r => r[j]));
+const add = (A, B) => A.map((r, i) => r.map((v, j) => v + B[i][j]));
+const sub = (A, B) => A.map((r, i) => r.map((v, j) => v - B[i][j]));
+const zeros = (n, m) => Array.from({ length: n }, () => Array(m).fill(0));
+function invert(M) {
+  const n = M.length;
+  const A = M.map((r, i) => [...r, ...Array.from({ length: n }, (_, j) => (i === j ? 1 : 0))]);
+  let logdet = 0;
+  for (let c = 0; c < n; c++) {
+    let p = c;
+    for (let r = c + 1; r < n; r++) if (Math.abs(A[r][c]) > Math.abs(A[p][c])) p = r;
+    [A[c], A[p]] = [A[p], A[c]];
+    const piv = A[c][c];
+    logdet += Math.log(Math.abs(piv));
+    for (let j = 0; j < 2 * n; j++) A[c][j] /= piv;
+    for (let r = 0; r < n; r++) if (r !== c) {
+      const f = A[r][c];
+      if (f) for (let j = 0; j < 2 * n; j++) A[r][j] -= f * A[c][j];
+    }
+  }
+  return { inv: A.map(r => r.slice(n)), logdet };
+}
+
+// ---------- LMM by ML-EM (Laird & Ware) ----------
+function fitLMM(data, q) {
+  const subs = data.map(d => ({
+    X: d.t.map(t => [1, t]),
+    Z: d.t.map(t => (q === 1 ? [1] : [1, t])),
+    y: d.y.map(v => [v]),
+    n: d.t.length,
+  }));
+  const nTot = subs.reduce((s, x) => s + x.n, 0);
+  let XtX = zeros(2, 2), Xty = zeros(2, 1);
+  for (const s of subs) { XtX = add(XtX, mul(tr(s.X), s.X)); Xty = add(Xty, mul(tr(s.X), s.y)); }
+  let beta = mul(invert(XtX).inv, Xty);
+  let s2 = subs.reduce((a, s) => a + sub(s.y, mul(s.X, beta)).reduce((b, [e]) => b + e * e, 0), 0) / nTot;
+  let D = q === 1 ? [[s2 / 2]] : [[s2 / 2, 0], [0, 0.5]];
+  let sig2 = s2 / 2;
+
+  const vInv = s => {
+    const V = add(mul(mul(s.Z, D), tr(s.Z)), s.Z.map((_, i) => s.Z.map((_, j) => (i === j ? sig2 : 0))));
+    return invert(V);
+  };
+
+  for (let it = 0; it < 3000; it++) {
+    let A = zeros(2, 2), bv = zeros(2, 1);
+    for (const s of subs) {
+      s.Vi = vInv(s).inv;
+      const XtVi = mul(tr(s.X), s.Vi);
+      A = add(A, mul(XtVi, s.X)); bv = add(bv, mul(XtVi, s.y));
+    }
+    beta = mul(invert(A).inv, bv);
+    let Dn = zeros(q, q), sn = 0;
+    for (const s of subs) {
+      const r = sub(s.y, mul(s.X, beta));
+      const DZt = mul(D, tr(s.Z));
+      const DZtVi = mul(DZt, s.Vi);
+      const b = mul(DZtVi, r);
+      const C = sub(D, mul(DZtVi, mul(s.Z, D)));
+      const e = sub(r, mul(s.Z, b));
+      const ZCZt = mul(mul(s.Z, C), tr(s.Z));
+      sn += e.reduce((a, [v]) => a + v * v, 0) + ZCZt.reduce((a, row, i) => a + row[i], 0);
+      Dn = add(Dn, add(mul(b, tr(b)), C));
+    }
+    Dn = Dn.map(r => r.map(v => v / subs.length));
+    sn /= nTot;
+    const delta = Math.abs(sn - sig2) + Dn.flat().reduce((a, v, k) => a + Math.abs(v - D.flat()[k]), 0);
+    D = Dn; sig2 = sn;
+    if (delta < 1e-9) break;
+  }
+
+  // final BLUPs and log-likelihood
+  let ll = 0;
+  const re = subs.map(s => {
+    const { inv: Vi, logdet } = vInv(s);
+    const r = sub(s.y, mul(s.X, beta));
+    ll += -0.5 * (s.n * Math.log(2 * Math.PI) + logdet + mul(mul(tr(r), Vi), r)[0][0]);
+    const b = mul(mul(mul(D, tr(s.Z)), Vi), r);
+    return { u0: b[0][0], u1: q === 2 ? b[1][0] : 0 };
+  });
+  const k = 2 + (q === 1 ? 1 : 3) + 1;
+  const sd0 = Math.sqrt(D[0][0]);
+  const sd1 = q === 2 ? Math.sqrt(D[1][1]) : null;
+  return {
+    b0: beta[0][0], b1: beta[1][0], sd0, sd1,
+    corr: q === 2 && sd0 > 0 && sd1 > 0 ? D[0][1] / (sd0 * sd1) : null,
+    sigma: Math.sqrt(sig2), aic: -2 * ll + 2 * k, re,
+    lines: re.map(u => ({ a: beta[0][0] + u.u0, b: beta[1][0] + u.u1 })),
+  };
+}
+
+function olsLine(d) {
+  const n = d.t.length, mt = d.t.reduce((a, v) => a + v, 0) / n, my = d.y.reduce((a, v) => a + v, 0) / n;
+  let sxy = 0, sxx = 0;
+  d.t.forEach((t, k) => { sxy += (t - mt) * (d.y[k] - my); sxx += (t - mt) ** 2; });
+  const b = sxx ? sxy / sxx : 0;
+  return { a: my - b * mt, b };
+}
+
+// ---------- state ----------
+const svg = document.getElementById('chart');
+const box = document.getElementById('chartBox');
+let data, fits, ols, visitMeans;
+let model = 'ri';
+let disp = [], meanDisp = { a: 0, b: 0 };
+let focus = null, pinned = null;
+let animToken = 0, rafId = 0;
+let W = 700, H = 420;
+const M = { l: 50, r: 44, t: 14, b: 46 };
+let xS, yS, yDom;
+const el = {};
+
+function load(seed) {
+  data = simulate(seed);
+  fits = { ri: fitLMM(data, 1), ris: fitLMM(data, 2) };
+  ols = data.map(olsLine);
+  // visit times differ by patient, so the observed mean is taken over 2-month windows
+  visitMeans = [1, 3, 5, 7, 9, 11].map(c => {
+    const ys = []; data.forEach(d => d.t.forEach((t, k) => { if (t >= c - 1 && (t < c + 1 || (c === 11 && t <= 12))) ys.push(d.y[k]); }));
+    return { t: c, n: ys.length, y: ys.reduce((a, b) => a + b, 0) / (ys.length || 1) };
+  }).filter(m => m.n > 0);
+  const all = data.flatMap(d => d.y);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  for (const f of [fits.ri, fits.ris]) for (const l of f.lines) { lo = Math.min(lo, l.a, l.a + 12 * l.b); hi = Math.max(hi, l.a, l.a + 12 * l.b); }
+  yDom = [Math.floor((lo - 4) / 10) * 10, Math.ceil((hi + 4) / 10) * 10];
+  focus = pinned = null;
+  build();
+  renderTable(); renderChips(); renderFormula();
+}
+
+function mk(tag, attrs, parent) {
+  const n = document.createElementNS(NS, tag);
+  for (const k in attrs) n.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(n);
+  return n;
+}
+
+function build() {
+  svg.textContent = '';
+  const defs = mk('defs', {}, svg);
+  el.clipRect = mk('rect', {}, mk('clipPath', { id: 'plotClip' }, defs));
+  el.grid = mk('g', { class: 'grid' }, svg);
+  el.axes = mk('g', {}, svg);
+  const plotG = mk('g', { 'clip-path': 'url(#plotClip)' }, svg);
+  el.pts = data.map((d, i) => {
+    const g = mk('g', { class: 'pt', 'data-i': i, style: `--h:${d.hue}` }, plotG);
+    const o = {
+      g,
+      ols: mk('line', { class: 'ols' }, g),
+      fit: mk('line', { class: 'fit' }, g),
+      hit: mk('line', { class: 'hit' }, g),
+      dots: d.t.map(() => mk('circle', { class: 'dot', r: 4.2 }, g)),
+    };
+    g.addEventListener('pointerenter', () => setFocus(i));
+    g.addEventListener('pointerleave', () => setFocus(null));
+    g.addEventListener('click', () => { pinned = pinned === i ? null : i; setFocus(null); });
+    return o;
+  });
+  el.meanG = mk('g', { id: 'meanG' }, plotG);
+  el.meanHalo = mk('line', { id: 'meanHalo' }, el.meanG);
+  el.meanLine = mk('line', { id: 'meanLine' }, el.meanG);
+  el.avgs = visitMeans.map(() => mk('rect', { class: 'avg', width: 8, height: 8 }, el.meanG));
+  el.focusLabel = mk('text', { id: 'focusLabel' }, svg);
+  layout();
+}
+
+function layout() {
+  W = Math.max(280, box.clientWidth);
+  H = Math.round(Math.min(470, Math.max(300, W * 0.6)));
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.setAttribute('height', H);
+  const pw = W - M.l - M.r, ph = H - M.t - M.b;
+  xS = t => M.l + (t / 12) * pw;
+  yS = v => M.t + (1 - (v - yDom[0]) / (yDom[1] - yDom[0])) * ph;
+  el.clipRect.setAttribute('x', M.l - 6); el.clipRect.setAttribute('y', M.t - 6);
+  el.clipRect.setAttribute('width', pw + 12); el.clipRect.setAttribute('height', ph + 12);
+
+  el.grid.textContent = ''; el.axes.textContent = '';
+  const range = yDom[1] - yDom[0];
+  const step = range > 60 ? 20 : range > 30 ? 10 : 5;
+  for (let v = Math.ceil(yDom[0] / step) * step; v <= yDom[1]; v += step) {
+    mk('line', { x1: M.l, x2: W - M.r, y1: yS(v), y2: yS(v), class: v === yDom[0] ? 'base' : '' }, el.grid);
+    mk('text', { x: M.l - 8, y: yS(v) + 4, 'text-anchor': 'end' }, el.axes).textContent = v;
+  }
+  for (const t of VISITS) {
+    mk('line', { x1: xS(t), x2: xS(t), y1: H - M.b, y2: H - M.b + 5, class: 'base' }, el.grid);
+    mk('text', { x: xS(t), y: H - M.b + 18, 'text-anchor': 'middle' }, el.axes).textContent = t;
+  }
+  mk('text', { x: M.l + pw / 2, y: H - 8, 'text-anchor': 'middle', class: 'axis-title' }, el.axes).textContent = 'Months since starting treatment';
+  const yt = mk('text', { x: 0, y: 0, 'text-anchor': 'middle', class: 'axis-title', transform: `translate(14 ${M.t + ph / 2}) rotate(-90)` }, el.axes);
+  yt.textContent = 'Systolic BP (mmHg)';
+
+  data.forEach((d, i) => {
+    const o = el.pts[i];
+    d.t.forEach((t, k) => { o.dots[k].setAttribute('cx', xS(t)); o.dots[k].setAttribute('cy', yS(d.y[k])); });
+    setLine(o.ols, ols[i]);
+  });
+  visitMeans.forEach((m, k) => {
+    const r = el.avgs[k];
+    r.setAttribute('x', xS(m.t) - 4); r.setAttribute('y', yS(m.y) - 4);
+    r.setAttribute('transform', `rotate(45 ${xS(m.t)} ${yS(m.y)})`);
+  });
+  render();
+}
+
+function setLine(node, l) {
+  node.setAttribute('x1', xS(0)); node.setAttribute('y1', yS(l.a));
+  node.setAttribute('x2', xS(12)); node.setAttribute('y2', yS(l.a + 12 * l.b));
+}
+
+function render() {
+  el.pts.forEach((o, i) => { if (disp[i]) { setLine(o.fit, disp[i]); setLine(o.hit, disp[i]); } });
+  setLine(el.meanLine, meanDisp); setLine(el.meanHalo, meanDisp);
+  const f = focus ?? pinned;
+  if (f != null && disp[f]) {
+    const l = disp[f];
+    el.focusLabel.setAttribute('x', xS(12) + 6);
+    el.focusLabel.setAttribute('y', yS(l.a + 12 * l.b) + 4);
+    el.focusLabel.textContent = data[f].id;
+  } else el.focusLabel.textContent = '';
+}
+
+// ---------- readouts ----------
+const fmt = (v, d = 1) => (v == null ? 'n/a' : (v < 0 ? '−' : '') + Math.abs(v).toFixed(d));
+const sgn = (v, d = 1) => (v >= 0 ? '+' : '−') + Math.abs(v).toFixed(d);
+
+function renderTable() {
+  const rows = [
+    ['β₀ intercept (mmHg)', f => fmt(f.b0)],
+    ['β₁ slope (mmHg/month)', f => fmt(f.b1, 2)],
+    ['τ₀ SD of intercepts', f => fmt(f.sd0)],
+    ['τ₁ SD of slopes', f => fmt(f.sd1, 2)],
+    ['ρ corr(u₀, u₁)', f => fmt(f.corr, 2)],
+    ['σ residual SD', f => fmt(f.sigma)],
+    ['AIC', f => fmt(f.aic)],
+  ];
+  document.getElementById('estBody').innerHTML = rows.map(([lab, g]) =>
+    `<tr><td>${lab}</td>${[['ri', fits.ri], ['ris', fits.ris]].map(([k, f]) => { const v = g(f); return `<td class="${model === k ? 'act' : ''} ${v === 'n/a' ? 'na' : ''}">${v}</td>`; }).join('')}</tr>`).join('');
+  document.getElementById('h-ri').className = model === 'ri' ? 'act' : '';
+  document.getElementById('h-ris').className = model === 'ris' ? 'act' : '';
+}
+
+function renderFormula() {
+  document.getElementById('formula').innerHTML = model === 'ri'
+    ? 'y<sub>ij</sub> = (β₀ + <span class="rnd">u₀ᵢ</span>) + β₁·t<sub>ij</sub> + ε<sub>ij</sub>'
+    : 'y<sub>ij</sub> = (β₀ + <span class="rnd">u₀ᵢ</span>) + (β₁ + <span class="rnd">u₁ᵢ</span>)·t<sub>ij</sub> + ε<sub>ij</sub>';
+  document.getElementById('lme4').innerHTML = model === 'ri'
+    ? 'lmer(bp ~ month + <span class="rnd">(1 | patient)</span>)'
+    : 'lmer(bp ~ month + <span class="rnd">(month | patient)</span>)';
+}
+
+const chipsBox = document.getElementById('chips');
+function renderChips() {
+  const f = fits[model];
+  chipsBox.innerHTML = data.map((d, i) => {
+    const u = f.re[i];
+    const txt = model === 'ri' ? `u₀ ${sgn(u.u0)}` : `u₀ ${sgn(u.u0)}  u₁ ${sgn(u.u1, 2)}`;
+    return `<button type="button" class="chip" data-i="${i}" style="--h:${d.hue}"><i></i><strong>${d.id}</strong><span>${txt}</span></button>`;
+  }).join('');
+  syncFocus();
+}
+chipsBox.addEventListener('pointerover', e => { const c = e.target.closest('.chip'); if (c) setFocus(+c.dataset.i); });
+chipsBox.addEventListener('pointerleave', () => setFocus(null));
+chipsBox.addEventListener('focusin', e => { const c = e.target.closest('.chip'); if (c) setFocus(+c.dataset.i); });
+chipsBox.addEventListener('focusout', () => setFocus(null));
+chipsBox.addEventListener('click', e => {
+  const c = e.target.closest('.chip'); if (!c) return;
+  const i = +c.dataset.i; pinned = pinned === i ? null : i; syncFocus();
+});
+
+function setFocus(i) { focus = i; syncFocus(); }
+function syncFocus() {
+  const f = focus ?? pinned;
+  svg.classList.toggle('focusing', f != null);
+  el.pts?.forEach((o, i) => o.g.classList.toggle('on', i === f));
+  chipsBox.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', +c.dataset.i === f));
+  const info = document.getElementById('focusInfo');
+  if (f == null) info.textContent = 'Hover a line, a dot or a patient chip to inspect one patient. Click to pin.';
+  else {
+    const fit = fits[model], l = fit.lines[f], o = ols[f], d = data[f];
+    info.innerHTML = `<strong>${d.id}</strong>, ${d.t.length} visits. Mixed model: ${fmt(l.a)} mmHg at baseline, ${fmt(l.b, 2)} per month. Separate fit: ${fmt(o.a)} mmHg, ${fmt(o.b, 2)} per month.`;
+  }
+  render();
+}
+
+// ---------- animation ----------
+const ease = t => 1 - Math.pow(1 - t, 3);
+const lerp = (p, q, t) => ({ a: p.a + (q.a - p.a) * t, b: p.b + (q.b - p.b) * t });
+const meanOf = f => ({ a: f.b0, b: f.b1 });
+
+function tweenTo(fromLines, toLines, fromMean, toMean, dur, stagger) {
+  cancelAnimationFrame(rafId);
+  if (reduceMotion || dur === 0) { disp = toLines.map(l => ({ ...l })); meanDisp = { ...toMean }; render(); return; }
+  const total = dur + stagger * (toLines.length - 1);
+  const t0 = performance.now();
+  const frame = now => {
+    const el_ = now - t0;
+    disp = toLines.map((l, i) => lerp(fromLines[i], l, ease(Math.min(1, Math.max(0, (el_ - i * stagger) / dur)))));
+    meanDisp = lerp(fromMean, toMean, ease(Math.min(1, el_ / dur)));
+    render();
+    if (el_ < total) rafId = requestAnimationFrame(frame);
+  };
+  rafId = requestAnimationFrame(frame);
+}
+
+function setStep(s) { document.querySelectorAll('.step').forEach(n => n.classList.toggle('on', +n.dataset.s <= s)); }
+
+function allDots() { return el.pts.flatMap(o => o.dots); }
+
+function replay() {
+  const tok = ++animToken;
+  cancelAnimationFrame(rafId);
+  const f = fits[model];
+  const target = f.lines, mean = meanOf(f);
+  if (reduceMotion) {
+    disp = target.map(l => ({ ...l })); meanDisp = mean; render(); setStep(3); return;
+  }
+  // reset
+  allDots().forEach(d => { d.style.transition = 'none'; d.style.opacity = 0; });
+  el.pts.forEach(o => { o.fit.style.transition = 'none'; o.fit.style.opacity = 0; });
+  el.avgs.forEach(a => { a.style.transition = 'none'; a.style.opacity = 0; });
+  disp = target.map(() => ({ ...mean })); meanDisp = mean; render();
+  const len = Math.hypot(xS(12) - xS(0), yS(mean.a + 12 * mean.b) - yS(mean.a)) + 2;
+  [el.meanLine, el.meanHalo].forEach(n => { n.style.transition = 'none'; n.style.strokeDasharray = len; n.style.strokeDashoffset = len; });
+  setStep(1);
+  const later = (ms, fn) => setTimeout(() => { if (tok === animToken) fn(); }, ms);
+
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (tok !== animToken) return;
+    el.pts.forEach((o, i) => o.dots.forEach((d, k) => {
+      d.style.transition = `opacity .35s ease ${i * 70 + k * 30}ms`; d.style.opacity = 1;
+    }));
+  }));
+  later(1300, () => {
+    setStep(2);
+    [el.meanLine, el.meanHalo].forEach(n => { n.style.transition = 'stroke-dashoffset 1s cubic-bezier(.4,0,.2,1)'; n.style.strokeDashoffset = 0; });
+    el.avgs.forEach((a, k) => { a.style.transition = `opacity .3s ease ${200 + k * 110}ms`; a.style.opacity = 1; });
+  });
+  later(2700, () => {
+    setStep(3);
+    el.pts.forEach(o => { o.fit.style.transition = 'opacity .3s'; o.fit.style.opacity = 1; });
+    tweenTo(disp, target, mean, mean, 1300, 70);
+  });
+  later(4800, () => {
+    [el.meanLine, el.meanHalo].forEach(n => { n.style.transition = ''; n.style.strokeDasharray = ''; n.style.strokeDashoffset = ''; });
+  });
+}
+
+function finishReplayNow() {
+  animToken++;
+  allDots().forEach(d => { d.style.transition = ''; d.style.opacity = 1; });
+  el.pts.forEach(o => { o.fit.style.transition = ''; o.fit.style.opacity = 1; });
+  el.avgs.forEach(a => { a.style.transition = ''; a.style.opacity = 1; });
+  [el.meanLine, el.meanHalo].forEach(n => { n.style.transition = ''; n.style.strokeDasharray = ''; n.style.strokeDashoffset = ''; });
+  setStep(3);
+}
+
+// ---------- controls ----------
+document.querySelectorAll('input[name="model"]').forEach(r => r.addEventListener('change', () => {
+  const prev = { lines: disp.map(l => ({ ...l })), mean: { ...meanDisp } };
+  model = document.querySelector('input[name="model"]:checked').value;
+  finishReplayNow();
+  const f = fits[model];
+  tweenTo(prev.lines, f.lines, prev.mean, meanOf(f), 900, 25);
+  renderTable(); renderChips(); renderFormula();
+}));
+
+const toggles = { 'c-fit': 'hide-fit', 'c-mean': 'hide-mean', 'c-dots': 'hide-dots', 'c-ols': 'hide-ols' };
+function syncToggles() { for (const id in toggles) svg.classList.toggle(toggles[id], !document.getElementById(id).checked); }
+for (const id in toggles) document.getElementById(id).addEventListener('change', syncToggles);
+
+document.getElementById('replay').addEventListener('click', replay);
+let seed = 914926672;
+document.getElementById('resample').addEventListener('click', () => {
+  seed = (seed * 48271 + 11) % 2147483647;
+  load(seed); syncToggles(); replay();
+});
+
+new ResizeObserver(() => { if (el.pts && Math.abs(box.clientWidth - W) > 1) layout(); }).observe(box);
+
+load(seed);
+syncToggles();
+// resting frame: fully drawn, then animate in
+disp = fits[model].lines.map(l => ({ ...l })); meanDisp = meanOf(fits[model]); render(); setStep(3);
+setTimeout(replay, 400);
+})();
+</script>
+</body>
+</html>
