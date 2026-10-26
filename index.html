@@ -169,7 +169,7 @@ footer.credit { display: flex; flex-wrap: wrap; justify-content: space-between; 
 footer.credit a { text-decoration: underline; text-underline-offset: 3px; }
 footer.credit a:hover { color: var(--accent); }
 
-/* Projector mode (?present, or press P): full-width bench, larger type, thicker marks and stronger contrast for a lecture-hall screen. */
+/* Projector mode (default when opened directly; ?normal or press P for the compact layout): full-width bench, larger type, thicker marks and stronger contrast for a lecture-hall screen. */
 .site-links { display: flex; align-items: center; gap: 22px; }
 .site button.link { font: inherit; font-weight: inherit; padding: 0; border: 0; background: none; color: inherit; }
 .site button.link:hover { background: none; color: var(--accent); }
@@ -219,7 +219,9 @@ footer.credit a:hover { color: var(--accent); }
 </head>
 <body>
 <script>if (window.self !== window.top) document.documentElement.classList.add('embedded');
-if (new URLSearchParams(location.search).has('present')) document.documentElement.classList.add('present');</script>
+// projector layout is the default when opened directly; ?normal (or the catalog's iframe) gives the compact layout
+{ const q = new URLSearchParams(location.search);
+  if (q.has('present') || (!q.has('normal') && window.self === window.top)) document.documentElement.classList.add('present'); }</script>
 <div class="wrap">
   <nav class="site" aria-label="Site"><a class="wordmark" href="https://atpinto.github.io/">Biostatistics <span>in motion</span></a><span class="site-links"><button class="link" id="presentOn" type="button" title="Larger layout for lectures (P)">Projector mode</button><a href="https://atpinto.github.io/#catalog">All simulations</a></span></nav>
   <button class="present-exit" id="presentOff" type="button" title="Back to the normal layout (P)">Exit projector mode</button>
@@ -739,8 +741,9 @@ addEventListener('resize', () => { if (el.pts && isPresent()) layout(); });
 function setPresent(on) {
   document.documentElement.classList.toggle('present', on);
   const url = new URL(location.href);
-  if (on) url.searchParams.set('present', ''); else url.searchParams.delete('present');
-  history.replaceState(null, '', url.href.replace('present=', 'present').replace(/\?$/, ''));
+  url.searchParams.delete('present');
+  if (on) url.searchParams.delete('normal'); else url.searchParams.set('normal', '');
+  history.replaceState(null, '', url.href.replace('normal=', 'normal').replace(/\?$/, ''));
   layout();
 }
 document.getElementById('presentOn').addEventListener('click', () => setPresent(true));
