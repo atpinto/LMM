@@ -169,13 +169,45 @@ footer.credit { display: flex; flex-wrap: wrap; justify-content: space-between; 
 footer.credit a { text-decoration: underline; text-underline-offset: 3px; }
 footer.credit a:hover { color: var(--accent); }
 
+/* Projector mode (?present, or press P): full-width bench, larger type, thicker marks and stronger contrast for a lecture-hall screen. */
+.site-links { display: flex; align-items: center; gap: 22px; }
+.site button.link { font: inherit; font-weight: inherit; padding: 0; border: 0; background: none; color: inherit; }
+.site button.link:hover { background: none; color: var(--accent); }
+.present-exit { display: none; }
+:root.present { --muted: #3c413d; --rule: #c3c8c0; }
+@media (prefers-color-scheme: dark) { :root.present:not([data-theme="light"]) { --muted: #c4c9c2; --rule: #3c423c; } }
+:root.present[data-theme="dark"] { --muted: #c4c9c2; --rule: #3c423c; }
+.present .wrap { max-width: none; gap: 18px; padding-block: 14px 40px; padding-left: max(28px, 2vw); padding-right: max(28px, 2vw); }
+.present .site, .present header p.lede { display: none; }
+.present header { max-width: none; gap: 6px; padding-right: 150px; }
+.present .category { font-size: 20px; }
+.present h1 { font-size: clamp(36px, 3vw, 60px); letter-spacing: -1px; }
+.present .bench { grid-template-columns: minmax(0, 1fr) clamp(500px, 34vw, 680px); gap: 24px; }
+@media (max-width: 960px) { .present .bench { grid-template-columns: minmax(0, 1fr); } }
+.present .rail, .present .legend, .present #focusInfo, .present .steps, .present .notes, .present footer.credit { zoom: 1.65; }
+@media (min-width: 1700px) { .present .rail, .present .legend, .present #focusInfo, .present .steps, .present .notes, .present footer.credit { zoom: 1.9; } }
+.present #chart text { font-size: clamp(22px, 1.75vw, 34px); }
+.present #chart .axis-title { font-size: clamp(24px, 1.9vw, 36px); }
+.present #focusLabel { font-size: clamp(24px, 1.9vw, 36px); stroke-width: 7px; }
+.present .pt .fit { stroke-width: 3; }
+.present .pt .ols { stroke-width: 2.2; stroke-dasharray: 7 5; }
+.present .pt .dot { r: 6.5px; stroke-width: 1.6; }
+.present .pt .hit { stroke-width: 20; }
+.present #meanLine { stroke-width: 6; }
+.present #meanHalo { stroke-width: 13; }
+.present .avg { stroke-width: 2.2; }
+.present #chart.focusing .pt.on .fit { stroke-width: 5; }
+.present .present-exit { display: block; zoom: 1.4; position: fixed; top: 16px; right: max(28px, 2vw); z-index: 5; }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
 </head>
 <body>
-<script>if (window.self !== window.top) document.documentElement.classList.add('embedded');</script>
+<script>if (window.self !== window.top) document.documentElement.classList.add('embedded');
+if (new URLSearchParams(location.search).has('present')) document.documentElement.classList.add('present');</script>
 <div class="wrap">
-  <nav class="site" aria-label="Site"><a class="wordmark" href="https://atpinto.github.io/">Biostatistics <span>in motion</span></a><a href="https://atpinto.github.io/#catalog">All simulations</a></nav>
+  <nav class="site" aria-label="Site"><a class="wordmark" href="https://atpinto.github.io/">Biostatistics <span>in motion</span></a><span class="site-links"><button class="link" id="presentOn" type="button" title="Larger layout for lectures (P)">Projector mode</button><a href="https://atpinto.github.io/#catalog">All simulations</a></span></nav>
+  <button class="present-exit" id="presentOff" type="button" title="Back to the normal layout (P)">Exit projector mode</button>
   <header>
     <p class="category">Regression models</p>
     <h1>Linear mixed models. <span>One average line, and a line for every patient.</span></h1>
@@ -463,9 +495,16 @@ function build() {
   layout();
 }
 
+const isPresent = () => document.documentElement.classList.contains('present');
+
 function layout() {
+  const P = isPresent();
+  const k = P ? Math.min(1.55, Math.max(1, innerWidth / 1280)) : 1; // tracks the vw-scaled chart font in projector mode
+  Object.assign(M, P ? { l: 84 * k, r: 76 * k, t: 20, b: 86 * k } : { l: 50, r: 44, t: 14, b: 46 });
   W = Math.max(280, box.clientWidth);
-  H = Math.round(Math.min(470, Math.max(300, W * 0.6)));
+  // projector mode: fill the screen height left after the header (at least 62% of it; the steps may scroll below)
+  H = P ? Math.round(Math.min(W * 0.62, Math.max(innerHeight * 0.62, innerHeight - (box.getBoundingClientRect().top + scrollY) - 250)))
+        : Math.round(Math.min(470, Math.max(300, W * 0.6)));
   svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
   svg.setAttribute('height', H);
   const pw = W - M.l - M.r, ph = H - M.t - M.b;
@@ -479,14 +518,14 @@ function layout() {
   const step = range > 60 ? 20 : range > 30 ? 10 : 5;
   for (let v = Math.ceil(yDom[0] / step) * step; v <= yDom[1]; v += step) {
     mk('line', { x1: M.l, x2: W - M.r, y1: yS(v), y2: yS(v), class: v === yDom[0] ? 'base' : '' }, el.grid);
-    mk('text', { x: M.l - 8, y: yS(v) + 4, 'text-anchor': 'end' }, el.axes).textContent = v;
+    mk('text', { x: M.l - 10 * k, y: yS(v) + 8 * k - (P ? 0 : 4), 'text-anchor': 'end' }, el.axes).textContent = v;
   }
   for (const t of VISITS) {
     mk('line', { x1: xS(t), x2: xS(t), y1: H - M.b, y2: H - M.b + 5, class: 'base' }, el.grid);
-    mk('text', { x: xS(t), y: H - M.b + 18, 'text-anchor': 'middle' }, el.axes).textContent = t;
+    mk('text', { x: xS(t), y: H - M.b + (P ? 32 * k : 18), 'text-anchor': 'middle' }, el.axes).textContent = t;
   }
-  mk('text', { x: M.l + pw / 2, y: H - 8, 'text-anchor': 'middle', class: 'axis-title' }, el.axes).textContent = 'Months since starting treatment';
-  const yt = mk('text', { x: 0, y: 0, 'text-anchor': 'middle', class: 'axis-title', transform: `translate(14 ${M.t + ph / 2}) rotate(-90)` }, el.axes);
+  mk('text', { x: M.l + pw / 2, y: H - (P ? 10 * k : 8), 'text-anchor': 'middle', class: 'axis-title' }, el.axes).textContent = 'Months since starting treatment';
+  const yt = mk('text', { x: 0, y: 0, 'text-anchor': 'middle', class: 'axis-title', transform: `translate(${P ? 22 * k : 14} ${M.t + ph / 2}) rotate(-90)` }, el.axes);
   yt.textContent = 'Systolic BP (mmHg)';
 
   data.forEach((d, i) => {
@@ -496,7 +535,9 @@ function layout() {
   });
   visitMeans.forEach((m, k) => {
     const r = el.avgs[k];
-    r.setAttribute('x', xS(m.t) - 4); r.setAttribute('y', yS(m.y) - 4);
+    const a = P ? 12 : 8;
+    r.setAttribute('width', a); r.setAttribute('height', a);
+    r.setAttribute('x', xS(m.t) - a / 2); r.setAttribute('y', yS(m.y) - a / 2);
     r.setAttribute('transform', `rotate(45 ${xS(m.t)} ${yS(m.y)})`);
   });
   render();
@@ -513,8 +554,8 @@ function render() {
   const f = focus ?? pinned;
   if (f != null && disp[f]) {
     const l = disp[f];
-    el.focusLabel.setAttribute('x', xS(12) + 6);
-    el.focusLabel.setAttribute('y', yS(l.a + 12 * l.b) + 4);
+    el.focusLabel.setAttribute('x', xS(12) + 8);
+    el.focusLabel.setAttribute('y', yS(l.a + 12 * l.b) + (isPresent() ? 8 : 4));
     el.focusLabel.textContent = data[f].id;
   } else el.focusLabel.textContent = '';
 }
@@ -676,6 +717,22 @@ document.getElementById('resample').addEventListener('click', () => {
 });
 
 new ResizeObserver(() => { if (el.pts && Math.abs(box.clientWidth - W) > 1) layout(); }).observe(box);
+addEventListener('resize', () => { if (el.pts && isPresent()) layout(); });
+
+function setPresent(on) {
+  document.documentElement.classList.toggle('present', on);
+  const url = new URL(location.href);
+  if (on) url.searchParams.set('present', ''); else url.searchParams.delete('present');
+  history.replaceState(null, '', url.href.replace('present=', 'present').replace(/\?$/, ''));
+  layout();
+}
+document.getElementById('presentOn').addEventListener('click', () => setPresent(true));
+document.getElementById('presentOff').addEventListener('click', () => setPresent(false));
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey || e.target.matches('input[type=text], textarea')) return;
+  if (e.key === 'p' || e.key === 'P') setPresent(!isPresent());
+  else if (e.key === 'Escape' && isPresent()) setPresent(false);
+});
 
 load(seed);
 syncToggles();
